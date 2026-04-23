@@ -63,12 +63,19 @@ data class PlayerState(
     val posX: Float,
     val posZ: Float,
     val questState: QuestState,
-    val inventory: Map<String, Int>, // -= примитивный словарь
+    val inventory: Map<String, Int>,
     val alchemistMemory: NpcMemory,
     val currentAreaId: String?,
-    val hintText: String, // -= Подсказка что делать и тп
-    val gold: Int
+    val hintText: String,
+    val gold: Int,
+    val hp: Int = 100,          // ← ДОБАВИЛИ
+    val maxHp: Int = 100        // ← ДОБАВИЛИ
 )
+/// хэпэшки
+fun hpPercent(player: PlayerState): Float {
+    if (player.maxHp <= 0) return 0f
+    return (player.hp.toFloat() / player.maxHp.toFloat()).coerceIn(0f, 1f)
+}
 
 // -=-=-= Вспомогательные функции =-=-=-
 fun herbCount(player: PlayerState): Int{ //> даёт количество herb
@@ -282,25 +289,6 @@ class GameServer{
             0f,
             1.7f
         )
-//        WorldObjectDef(
-//            "chest",
-//            WorldObjectType.CHEST,
-//            1f,
-//            0f,
-//            1.7f
-//        )
-        fun spawnChest() {
-            worldObjects.add(
-                WorldObjectDef(
-                    "chest",
-                    WorldObjectType.CHEST,
-                    1f,
-                    0f,
-                    1.7f
-                )
-            )
-        }
-
     )
 
     private  val _events = MutableSharedFlow<GameEvent>(extraBufferCapacity = 64)
@@ -352,8 +340,8 @@ class GameServer{
             distance2d(player.posX, player.posZ, obj.x, obj.z) <= obj.interactRadius
         }
 
-        return candidates.minByOrNull { obj ->  //> minBy = берёт ближайший объект по расстоянию до игрока | OrNull - если нет таких объектов - вернуть null
-            distance2d(player.posX, player.posZ, obj.x, obj.z) <= obj.interactRadius
+        return candidates.minByOrNull { obj ->
+            distance2d(player.posX, player.posZ, obj.x, obj.z)
         }
     }
 
@@ -412,12 +400,11 @@ class GameServer{
             }
             is CmdInteract -> {
                 val player = getPlayerState(cmd.playerId) //!
-                val obj = nearestObject(player)
-                val dist = distance2d(player.posX, player.posZ, obj.x, obj.z)
-                val herb = herbCount(player)
 
-                if (obj == null){
-                    _events.emit(ServerMessage(cmd.playerId, "Рядом нет объектов для взаимодейсвия"))
+                val herb = herbCount(player)
+                val dist = distance2d(player.posX, player.posZ, obj.x, obj.z)
+                val obj = nearestObject(player) ?: run {
+                    _events.emit(ServerMessage(cmd.playerId, "Рядом нет объектов"))
                     return
                 }
                 if (dist > obj.interactRadius) {
@@ -510,7 +497,7 @@ class GameServer{
 
                         val herbs = herbCount(player)
 
-                        if (herbs > 3){
+                        if (herbs < 3){
                             _events.emit(ServerMessage(cmd.playerId, "Недостаточно травы"))
                             return
                         }
@@ -530,7 +517,7 @@ class GameServer{
                                 alchemistMemory = newMemory
                             )
                         }
-                        spawnChest()
+
                         _events.emit(ServerMessage(cmd.playerId, "Сундук ис апеар"))
 
                         _events.emit(InventoryChanged(cmd.playerId, "herb", newCount))
@@ -760,6 +747,28 @@ fun main() = KoolApplication {
                 val player = hud.playerSnapShot.use()
                 val dialogue = buildAlchemistDialogue(player)
 
+
+                Text("Здоровье: ${player.hp}/${player.maxHp}") {
+                    modifier.font(sizes.smallText)
+                }
+
+                Box {
+                    modifier
+                        .width(150.dp)
+                        .height(18.dp)
+                        .background(Color(0.2f, 0.2f, 0.2f, 0.8f), RoundRectBackground(radius = 6.dp))
+
+                    // Внутренняя красная полоска
+                    Box {
+                        val pct = (hpPercent(player) * 100).toInt()
+
+                        modifier
+                            .width((150f * pct).dp)
+                            .height(18.dp)
+                            .background(Color(1f, 0f, 0f, 0.9f), RoundRectBackground(radius = 6.dp))
+                    }
+                }
+
                 Text("Игрок: ${hud.activePlayerIdFlow.use()}"){
                     modifier.margin(bottom = sizes.gap)
                 }
@@ -888,3 +897,5 @@ fun main() = KoolApplication {
         }
     }
 }
+// Ответы:
+// a, d, d, d
